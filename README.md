@@ -26,9 +26,24 @@ cargo build --release
 ./test.sh              # smoke test del PTY (necesita `script`)
 ```
 
-## Estado
+## Cómo se limpia el log
 
-El grabado anda. El `-s` todavía no: `strip-ansi-escapes` saca las secuencias pero no
-las *interpreta*, y los TUI posicionan el cursor en vez de emitir espacios — el texto
-resultante sale con el layout destruido. La solución es replayear el log por un emulador
-de terminal (`vt100`) y volcar el scrollback. Pendiente.
+`strip-ansi-escapes` no sirve para esto: un TUI no emite espacios, adelanta el cursor
+con `\033[NC`, así que borrar la secuencia borra el espaciado que representaba. Además
+repinta la pantalla entera y el texto sale duplicado N veces.
+
+En vez de eso el log crudo se replayea por un emulador de terminal (`vt100`) y se vuelca
+el scrollback resultante — que es exactamente lo que verías haciendo scroll hacia arriba
+en tu terminal. Los frames viejos quedan sobreescritos, no repetidos.
+
+```
+strip-ansi-escapes:  WelcometoClaudeCodev2.1.266
+vt100:               Welcome to Claude Code v2.1.266
+```
+
+## Limitaciones
+
+- El replay usa el tamaño de la terminal actual, no el de la sesión grabada (no lo
+  guardamos). Si la grabaste con otro ancho, el layout sale corrido.
+- Una app que usa la pantalla alternativa (`vim`, `htop`) no deja scrollback: del log
+  sale sólo el último frame.

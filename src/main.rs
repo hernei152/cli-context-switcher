@@ -198,9 +198,8 @@ fn retomar(cmd: &[String]) -> Result<i32> {
     let origen = &sesiones[etiquetas.iter().position(|e| *e == elegida).unwrap()];
 
     let crudo = fs::read(origen)?;
-    let limpio = strip_ansi_escapes::strip(&crudo);
     let destino = dir.join("contexto_para_llm.txt");
-    fs::write(&destino, &limpio)?;
+    fs::write(&destino, transcribir(&crudo))?;
 
     let prompt = format!(
         "Por favor, leé el historial de nuestra sesión anterior en este archivo: {}",
@@ -212,6 +211,60 @@ fn retomar(cmd: &[String]) -> Result<i32> {
     println!("[hernei] prompt copiado al portapapeles, pegalo y seguimos:\n  {prompt}\n");
 
     grabar(cmd)
+}
+
+/// Replayea el log crudo por un emulador de terminal y devuelve el scrollback ya
+/// renderizado. Sacarle los ANSI a secas no alcanza: los TUI posicionan el cursor
+/// en vez de emitir espacios, así que borrar la secuencia borra el espaciado que
+/// esa secuencia representaba.
+fn transcribir(crudo: &[u8]) -> String {
+    // ponytail: replayeamos al tamaño de la terminal actual, no al de la sesión
+    // grabada (no lo guardamos). Si la grabaste con otro ancho, el layout sale
+    // corrido; se arregla guardando filas/columnas junto al log.
+    let (cols, filas) = terminal::size().unwrap_or((80, 24));
+    let mut parser = vt100::Parser::new(filas, cols, 50_000);
+    parser.process(crudo);
+
+    let pantalla = parser.screen_mut();
+    pantalla.set_scrollback(usize::MAX); // se clampea al scrollback real
+    let total = pantalla.scrollback();
+
+    // Recorremos el buffer de la línea más vieja a la más nueva. Cada ventana
+    // avanza `filas`, salvo la última, que se solapa: por eso descartamos lo ya
+    // volcado comparando el índice absoluto contra las líneas que llevamos.
+    let mut lineas: Vec<String> = Vec::new();
+    let mut off = total;
+    loop {
+        pantalla.set_scrollback(off);
+        let base = total - off;
+        for (i, linea) in pantalla.rows(0, cols).collect::<Vec<_>>().into_iter().enumerate() {
+            if base + i >= lineas.len() {
+                lineas.push(linea.trim_end().to_string());
+            }
+        }
+        if off == 0 {
+            break;
+        }
+        off = off.saturating_sub(filas as usize);
+    }
+
+    // Un TUI deja la grilla llena de relleno vacío; más de una línea en blanco
+    // seguida no aporta nada.
+    let mut salida = String::new();
+    let mut blancos = 0;
+    for linea in lineas {
+        if linea.is_empty() {
+            blancos += 1;
+            if blancos > 1 {
+                continue;
+            }
+        } else {
+            blancos = 0;
+        }
+        salida.push_str(&linea);
+        salida.push('\n');
+    }
+    salida.trim_start().to_string()
 }
 
 /// En X11/Wayland el portapapeles muere con el proceso dueño, así que este hilo
@@ -233,3 +286,41 @@ fn copiar(texto: String) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::transcribir;
+
+    #[test]
+    fn el_movimiento_de_cursor_vuelve_a_ser_espacios() {
+        // Esto es exactamente lo que rompía con strip-ansi-escapes: el TUI no
+        // emite espacios, adelanta el cursor.
+        let t = transcribir(b"hola\x1b[3Cmundo\r\n");
+        assert!(t.contains("hola   mundo"), "salió {t:?}");
+    }
+
+    #[test]
+    fn el_redibujado_no_queda_duplicado() {
+        // Borrar la línea y reescribirla (un spinner) tiene que dejar un solo rastro.
+        let t = transcribir(b"cargando...\r\x1b[2Klisto\r\n");
+        assert!(t.contains("listo"), "salió {t:?}");
+        assert!(!t.contains("cargando"), "quedó el frame viejo: {t:?}");
+    }
+
+    #[test]
+    fn el_scrollback_sale_entero_y_en_orden() {
+        // 100 líneas contra una grilla de 24 filas: obliga a caminar el
+        // scrollback y a resolver la ventana final, que se solapa.
+        let mut crudo = Vec::new();
+        for i in 0..100 {
+            crudo.extend(format!("linea{i}\r\n").into_bytes());
+        }
+        let t = transcribir(&crudo);
+        let vistas: Vec<&str> = t.lines().filter(|l| l.starts_with("linea")).collect();
+        assert_eq!(vistas.len(), 100, "esperaba 100, hay {}", vistas.len());
+        for (i, l) in vistas.iter().enumerate() {
+            assert_eq!(*l, format!("linea{i}"));
+        }
+    }
+}
+
