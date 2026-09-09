@@ -1,0 +1,20 @@
+[package]
+name = "hernei"
+version = "0.1.0"
+edition = "2021"
+description = "Wrapper de cero overhead para CLIs de LLM: graba la sesión y te deja retomarla"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+arboard = { version = "3", features = ["wayland-data-control"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+inquire = "0.7"
+portable-pty = "0.9"
+strip-ansi-escapes = "0.2"
+
+[profile.release]
+lto = true
+strip = true
