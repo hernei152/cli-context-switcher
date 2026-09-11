@@ -11,7 +11,8 @@ hernei claude -s       # elegís una sesión anterior y arranca con ese contexto
 ```
 
 Con `-s`: menú de sesiones → limpia los ANSI → escribe `~/.hernei/contexto_para_llm.txt`
-→ copia al portapapeles un prompt que apunta a ese archivo → lanza el LLM (grabando también).
+→ copia al portapapeles un prompt que apunta a ese archivo → espera Enter → lanza el LLM
+(grabando también).
 
 ## Cómo funciona
 

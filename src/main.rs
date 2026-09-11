@@ -231,6 +231,12 @@ fn retomar(cmd: &[String]) -> Result<i32> {
     println!("[hernei] contexto limpio en {}", destino.display());
     println!("[hernei] prompt copiado al portapapeles, pegalo y seguimos:\n  {prompt}\n");
 
+    // Sin la pausa, grabar() activa la pantalla alternativa y tapa estas
+    // instrucciones antes de que las leas. Enter para arrancar.
+    println!("[hernei] presioná Enter para arrancar {}", cmd.join(" "));
+    let mut s = String::new();
+    let _ = std::io::stdin().read_line(&mut s); // EOF también arranca
+
     grabar(cmd)
 }
 
@@ -243,6 +249,26 @@ fn transcribir(crudo: &[u8]) -> String {
     // grabada (no lo guardamos). Si la grabaste con otro ancho, el layout sale
     // corrido; se arregla guardando filas/columnas junto al log.
     let (cols, filas) = terminal::size().unwrap_or((80, 24));
+    transcribir_a(crudo, filas, cols)
+}
+
+/// Replay guardado: el log es entrada no confiable (puede venir de cualquier
+/// app), así que un panic del emulador no puede tumbar a hernei.
+fn transcribir_a(crudo: &[u8], filas: u16, cols: u16) -> String {
+    // Una grilla de 0 (script(1) sin terminal reporta 0x0) hace panic a vt100;
+    // clampeamos al mínimo de una terminal real.
+    let (filas, cols) = (filas.max(24), cols.max(80));
+    let hook = std::panic::take_hook(); // el replay que falla no tiene que escupir el panic
+    std::panic::set_hook(Box::new(|_| {}));
+    let resultado = std::panic::catch_unwind(|| transcribir_con(crudo, filas, cols));
+    std::panic::set_hook(hook);
+    resultado.unwrap_or_else(|_| {
+        eprintln!("[hernei] no pude transcribir este log; el contexto queda vacío");
+        String::new()
+    })
+}
+
+fn transcribir_con(crudo: &[u8], filas: u16, cols: u16) -> String {
     let mut parser = vt100::Parser::new(filas, cols, 50_000);
     parser.process(crudo);
 
@@ -310,7 +336,18 @@ fn copiar(texto: String) {
 
 #[cfg(test)]
 mod tests {
-    use super::transcribir;
+    use super::{transcribir, transcribir_a};
+
+    // El tamaño degenerado (script(1) headless reporta 0x0) no puede tumbar el
+    // replay: vt100 panic-ea con grilla vacía. La app que posiciona el cursor
+    // debajo de la grilla (bubbletea emite fila H+5) tampoco.
+    #[test]
+    fn grilla_degenerada_no_paniquea() {
+        let t = transcribir_a(b"hola\r\n\x1b[29;1H^C", 0, 0);
+        assert!(t.contains("hola"), "salió {t:?}");
+        let t = transcribir_a(b"hola\r\n\x1b[29;1H^C", 24, 80);
+        assert!(t.contains("hola"), "salió {t:?}");
+    }
 
     #[test]
     fn el_movimiento_de_cursor_vuelve_a_ser_espacios() {
