@@ -9,7 +9,8 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 use arboard::Clipboard;
 use clap::Parser;
-use crossterm::terminal;
+use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::execute;
 use inquire::Select;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
@@ -71,6 +72,24 @@ impl Drop for ModoRaw {
     }
 }
 
+/// Corre la sesión en la pantalla alternativa (como vim/less): al cerrar, la
+/// terminal vuelve a la pantalla principal y no queda rastro de la sesión.
+/// La grabación en ~/.hernei/ sigue intacta.
+struct PantallaAlt;
+
+impl PantallaAlt {
+    fn activar() -> Result<Self> {
+        execute!(std::io::stdout(), EnterAlternateScreen)?;
+        Ok(PantallaAlt)
+    }
+}
+
+impl Drop for PantallaAlt {
+    fn drop(&mut self) {
+        let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+    }
+}
+
 fn tam_actual() -> PtySize {
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
     PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }
@@ -113,6 +132,7 @@ fn grabar(cmd: &[String]) -> Result<i32> {
     let mut escritor = par.master.take_writer()?;
 
     let _raw = ModoRaw::activar()?;
+    let _alt = PantallaAlt::activar()?;
     let vivo = Arc::new(AtomicBool::new(true));
 
     // ponytail: sondeo del tamaño cada 200ms en vez de manejar SIGWINCH.
@@ -163,6 +183,7 @@ fn grabar(cmd: &[String]) -> Result<i32> {
     let estado = hijo.wait()?;
     let _ = bombeo.join();
     vivo.store(false, Ordering::Relaxed);
+    drop(_alt); // salir de la pantalla alternativa antes de imprimir nada
     drop(_raw);
 
     eprintln!("\r\n[hernei] sesión guardada en {}", log_path.display());
