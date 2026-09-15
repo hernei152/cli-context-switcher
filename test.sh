@@ -12,9 +12,10 @@ grep -q $'\033\[31mhola-rojo' "$LOG"        || { echo "FAIL: el log no conservó
 grep -q "hola-rojo" <(cat "$LOG")           || { echo "FAIL: falta el texto"; exit 1; }
 
 # el código de salida del comando envuelto tiene que propagarse
-set +e; script -qec "$BIN bash -c 'exit 42'" /dev/null >/dev/null; CODE=$?; set -e
+set +e; script -qec "$BIN -n 'Arreglar login' bash -c 'exit 42'" /dev/null >/dev/null; CODE=$?; set -e
 [ "$CODE" = 42 ] || { echo "FAIL: exit code $CODE, esperaba 42"; exit 1; }
 [ "$(ls "$HOME"/.hernei | wc -l)" = 2 ] || { echo "FAIL: la segunda sesión pisó a la primera"; exit 1; }
+ls "$HOME"/.hernei/session_bash_*__Arreglar-login.txt >/dev/null || { echo "FAIL: falta el título de la sesión"; exit 1; }
 
 echo "OK ($(ls "$HOME"/.hernei | wc -l) sesiones grabadas)"
 rm -rf "$HOME"

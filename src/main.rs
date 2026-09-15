@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -26,6 +26,10 @@ struct Cli {
     #[arg(short, long)]
     session: bool,
 
+    /// Título de la nueva sesión (por defecto: carpeta actual y comando)
+    #[arg(short = 'n', long)]
+    name: Option<String>,
+
     /// Comando a envolver, p.ej. `claude` o `codex --model x`
     #[arg(required = true, allow_hyphen_values = true)]
     cmd: Vec<String>,
@@ -42,9 +46,9 @@ fn main() -> Result<()> {
     let cli = Cli::parse_from(argv);
 
     let codigo = if cli.session || flag_al_final {
-        retomar(&cli.cmd)?
+        retomar(&cli.cmd, cli.name.as_deref())?
     } else {
-        grabar(&cli.cmd)?
+        grabar(&cli.cmd, cli.name.as_deref())?
     };
     std::process::exit(codigo);
 }
@@ -96,12 +100,14 @@ fn tam_actual() -> PtySize {
 }
 
 /// Corre `cmd` dentro de un PTY, escupiendo todo a stdout y a un log en ~/.hernei/.
-fn grabar(cmd: &[String]) -> Result<i32> {
+fn grabar(cmd: &[String], nombre_elegido: Option<&str>) -> Result<i32> {
     let dir = dir_hernei()?;
+    let cwd = std::env::current_dir()?;
     let nombre = PathBuf::from(&cmd[0])
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "cmd".into());
+    let titulo = titulo_sesion(&cwd, &nombre, nombre_elegido)?;
     let sello = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
 
     // Dos sesiones dentro del mismo segundo colisionan; antes que pisar el log
@@ -109,7 +115,7 @@ fn grabar(cmd: &[String]) -> Result<i32> {
     let (log_path, mut log) = (1..)
         .find_map(|i| {
             let sufijo = if i == 1 { String::new() } else { format!("_{i}") };
-            let p = dir.join(format!("session_{nombre}_{sello}{sufijo}.txt"));
+            let p = dir.join(format!("session_{nombre}_{sello}{sufijo}__{titulo}.txt"));
             File::create_new(&p).ok().map(|f| (p, f))
         })
         .context("no pude crear el archivo de sesión")?;
@@ -118,7 +124,7 @@ fn grabar(cmd: &[String]) -> Result<i32> {
 
     let mut builder = CommandBuilder::new(&cmd[0]);
     builder.args(&cmd[1..]);
-    builder.cwd(std::env::current_dir()?);
+    builder.cwd(cwd);
     let mut hijo = par
         .slave
         .spawn_command(builder)
@@ -191,7 +197,7 @@ fn grabar(cmd: &[String]) -> Result<i32> {
 }
 
 /// Menú de sesiones -> limpia ANSI -> copia el prompt -> arranca el LLM (grabando).
-fn retomar(cmd: &[String]) -> Result<i32> {
+fn retomar(cmd: &[String], nombre_elegido: Option<&str>) -> Result<i32> {
     let dir = dir_hernei()?;
 
     let mut sesiones: Vec<PathBuf> = fs::read_dir(&dir)?
@@ -206,13 +212,15 @@ fn retomar(cmd: &[String]) -> Result<i32> {
     if sesiones.is_empty() {
         bail!("no hay sesiones grabadas en {}", dir.display());
     }
-    // El timestamp está en el nombre, así que ordenar por nombre alcanza.
-    sesiones.sort();
+    // Los nombres empiezan con comandos distintos; el orden alfabético no
+    // representa el orden de las sesiones.
+    sesiones.sort_by_key(|p| p.metadata().and_then(|m| m.modified()).ok());
     sesiones.reverse();
 
     let etiquetas: Vec<String> = sesiones
         .iter()
-        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .enumerate()
+        .map(|(i, p)| format!("{}. {}", i + 1, etiqueta_sesion(p)))
         .collect();
 
     let elegida = Select::new("¿Qué sesión retomás?", etiquetas.clone()).prompt()?;
@@ -237,7 +245,64 @@ fn retomar(cmd: &[String]) -> Result<i32> {
     let mut s = String::new();
     let _ = std::io::stdin().read_line(&mut s); // EOF también arranca
 
-    grabar(cmd)
+    grabar(cmd, nombre_elegido)
+}
+
+/// El título se guarda en el nombre del log: no hace falta un archivo auxiliar
+/// y las sesiones anteriores siguen siendo legibles.
+fn titulo_sesion(cwd: &Path, comando: &str, elegido: Option<&str>) -> Result<String> {
+    let proyecto = cwd
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "sin-proyecto".into());
+    let titulo = elegido.unwrap_or(&proyecto).trim();
+    if titulo.is_empty() {
+        bail!("el nombre de la sesión no puede estar vacío");
+    }
+    let titulo = if elegido.is_some() {
+        titulo.to_string()
+    } else {
+        format!("{titulo} {comando}")
+    };
+    let mut slug = String::new();
+    for c in titulo.chars() {
+        if c.is_alphanumeric() {
+            slug.push(c);
+        } else if !slug.ends_with('-') && !slug.is_empty() {
+            slug.push('-');
+        }
+        // Limitar bytes (no caracteres) evita superar el límite del filesystem
+        // con títulos que contienen letras Unicode.
+        if slug.len() >= 80 {
+            break;
+        }
+    }
+    let slug = slug.trim_end_matches('-');
+    if slug.is_empty() {
+        bail!("el nombre de la sesión debe contener letras o números");
+    }
+    Ok(slug.to_string())
+}
+
+fn etiqueta_sesion(path: &Path) -> String {
+    let archivo = path.file_name().unwrap().to_string_lossy();
+    let titulo = archivo
+        .strip_suffix(".txt")
+        .and_then(|n| n.rsplit_once("__"))
+        .map(|(_, slug)| slug.replace('-', " "))
+        .unwrap_or_else(|| archivo.into_owned());
+    let fecha = path
+        .metadata()
+        .and_then(|m| m.modified())
+        .ok()
+        .map(|t| {
+            let t: chrono::DateTime<chrono::Local> = t.into();
+            t.format("%d/%m/%Y %H:%M").to_string()
+        });
+    match fecha {
+        Some(fecha) => format!("{titulo} · {fecha}"),
+        None => titulo,
+    }
 }
 
 /// Replayea el log crudo por un emulador de terminal y devuelve el scrollback ya
@@ -336,7 +401,30 @@ fn copiar(texto: String) {
 
 #[cfg(test)]
 mod tests {
-    use super::{transcribir, transcribir_a};
+    use super::{etiqueta_sesion, titulo_sesion, transcribir, transcribir_a};
+    use std::path::Path;
+
+    #[test]
+    fn nombres_descriptivos_y_sesiones_anteriores() {
+        assert_eq!(
+            titulo_sesion(Path::new("/proyectos/mi-app"), "claude", None).unwrap(),
+            "mi-app-claude"
+        );
+        assert_eq!(
+            titulo_sesion(Path::new("/proyectos/mi-app"), "claude", Some("Arreglar login: OAuth"))
+                .unwrap(),
+            "Arreglar-login-OAuth"
+        );
+        assert!(titulo_sesion(Path::new("/proyectos/mi-app"), "claude", Some("  ")).is_err());
+        assert_eq!(
+            etiqueta_sesion(Path::new("session_claude_20260915_120000__Arreglar-login-OAuth.txt")),
+            "Arreglar login OAuth"
+        );
+        assert_eq!(
+            etiqueta_sesion(Path::new("session_claude_20260915_120000.txt")),
+            "session_claude_20260915_120000.txt"
+        );
+    }
 
     // El tamaño degenerado (script(1) headless reporta 0x0) no puede tumbar el
     // replay: vt100 panic-ea con grilla vacía. La app que posiciona el cursor
@@ -381,4 +469,3 @@ mod tests {
         }
     }
 }
-

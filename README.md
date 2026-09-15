@@ -6,9 +6,15 @@ Graba la sesión interactiva sin romper el TUI y te deja retomar el contexto des
 ## Uso
 
 ```sh
-hernei claude          # graba en ~/.hernei/session_claude_YYYYMMDD_HHMMSS.txt
-hernei claude -s       # elegís una sesión anterior y arranca con ese contexto
+hernei claude                              # título automático: carpeta actual + comando
+hernei -n "Arreglar login" claude          # título elegido por vos
+hernei claude -s                           # elegís una sesión anterior y arranca con ese contexto
 ```
+
+El menú muestra el título y la fecha de cada sesión, con las más recientes primero.
+La fecha también queda en el nombre del archivo para evitar colisiones. Poné `-n` o
+`--name` **antes del comando**: los argumentos posteriores se pasan al CLI envuelto.
+Las sesiones grabadas con versiones anteriores siguen apareciendo en el menú.
 
 Con `-s`: menú de sesiones → limpia los ANSI → escribe `~/.hernei/contexto_para_llm.txt`
 → copia al portapapeles un prompt que apunta a ese archivo → espera Enter → lanza el LLM
