@@ -8,7 +8,8 @@ Graba la sesión interactiva sin romper el TUI y te deja retomar el contexto des
 ```sh
 hernei claude                              # título automático: carpeta actual + comando
 hernei -n "Arreglar login" claude          # título elegido por vos
-hernei claude -s                           # elegís una sesión anterior y arranca con ese contexto
+hernei codex -s                            # elegís una sesión y Codex lee el contexto al abrir
+hernei claude -s                           # elegís una sesión y recibís el prompt para pegar
 ```
 
 El menú muestra el título y la fecha de cada sesión, con las más recientes primero.
@@ -16,9 +17,12 @@ La fecha también queda en el nombre del archivo para evitar colisiones. Poné `
 `--name` **antes del comando**: los argumentos posteriores se pasan al CLI envuelto.
 Las sesiones grabadas con versiones anteriores siguen apareciendo en el menú.
 
-Con `-s`: menú de sesiones → limpia los ANSI → escribe `~/.hernei/contexto_para_llm.txt`
-→ copia al portapapeles un prompt que apunta a ese archivo → espera Enter → lanza el LLM
-(grabando también).
+Con `-s`, hernei muestra el menú, limpia los ANSI y escribe un archivo
+`~/.hernei/contexto_*.txt` propio de la sesión elegida. Para `codex`, pasa un prompt
+inicial al CLI: Codex recibe la instrucción de leer el archivo al abrir y esperar tu
+próximo pedido, sin copiar ni pegar nada. Para otros comandos, hernei muestra el
+prompt para pegarlo manualmente y también intenta copiarlo al portapapeles. La
+nueva sesión se graba como siempre.
 
 ## Cómo funciona
 

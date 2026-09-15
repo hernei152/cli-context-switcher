@@ -17,5 +17,18 @@ set +e; script -qec "$BIN -n 'Arreglar login' bash -c 'exit 42'" /dev/null >/dev
 [ "$(ls "$HOME"/.hernei | wc -l)" = 2 ] || { echo "FAIL: la segunda sesión pisó a la primera"; exit 1; }
 ls "$HOME"/.hernei/session_bash_*__Arreglar-login.txt >/dev/null || { echo "FAIL: falta el título de la sesión"; exit 1; }
 
-echo "OK ($(ls "$HOME"/.hernei | wc -l) sesiones grabadas)"
+# Codex recibe el prompt inicial como argumento, sin pegarlo en el TUI.
+printf 'historial de prueba\r\n' > "$HOME/.hernei/session_codex_20990101_000000__Prueba.txt"
+mkdir -p "$HOME/bin"
+cat > "$HOME/bin/codex" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" > "$HOME/args_codex.txt"
+EOF
+chmod +x "$HOME/bin/codex"
+printf '\r' | PATH="$HOME/bin:$PATH" script -qec "$BIN codex -s" /dev/null > "$HOME/salida_retomar.txt"
+grep -q 'Leé el historial de nuestra sesión anterior' "$HOME/args_codex.txt" || { echo "FAIL: Codex no recibió el prompt"; exit 1; }
+CTX=$(ls "$HOME"/.hernei/contexto_*.txt)
+grep -q 'historial de prueba' "$CTX" || { echo "FAIL: falta el contexto limpio"; exit 1; }
+
+echo "OK (PTY, nombres e inyección de contexto)"
 rm -rf "$HOME"
