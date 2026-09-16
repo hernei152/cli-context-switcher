@@ -37,21 +37,64 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
-    // ponytail: la spec usa `hernei claude -s`, pero trailing_var_arg le pasaría
-    // el -s al comando envuelto. Lo sacamos antes de que clap lo vea.
-    let mut argv: Vec<String> = std::env::args().collect();
-    let flag_al_final = matches!(argv.last().map(String::as_str), Some("-s" | "--session"));
-    if flag_al_final {
-        argv.pop();
-    }
-    let cli = Cli::parse_from(argv);
+    let cli = Cli::parse_from(normalizar_opciones(std::env::args().collect())?);
 
-    let codigo = if cli.session || flag_al_final {
+    let codigo = if cli.session {
         retomar(&cli.cmd, cli.name.as_deref())?
     } else {
         grabar(&cli.cmd, cli.name.as_deref())?
     };
     std::process::exit(codigo);
+}
+
+/// `trailing_var_arg` hace que Clap trate todo lo que sigue al comando como
+/// parte de ese comando. Movemos las opciones propias de hernei al principio
+/// para aceptar tanto `hernei -n titulo claude` como `hernei claude -n titulo`.
+/// Después de `--`, todos los argumentos pertenecen al comando envuelto.
+fn normalizar_opciones(argv: Vec<String>) -> Result<Vec<String>> {
+    let mut iter = argv.into_iter();
+    let programa = iter.next().unwrap_or_else(|| "hernei".into());
+    let mut args = Vec::new();
+    let mut sesion = false;
+    let mut nombre: Option<String> = None;
+    let mut opciones_del_comando = false;
+
+    while let Some(arg) = iter.next() {
+        if opciones_del_comando {
+            args.push(arg);
+            continue;
+        }
+        match arg.as_str() {
+            "--" => opciones_del_comando = true,
+            "-s" | "--session" => sesion = true,
+            "-n" | "--name" => {
+                nombre = Some(
+                    iter.next()
+                        .with_context(|| format!("falta el nombre después de `{arg}`"))?,
+                );
+            }
+            _ => {
+                if let Some(valor) = arg.strip_prefix("--name=") {
+                    nombre = Some(valor.to_string());
+                } else if let Some(valor) = arg.strip_prefix("-n=") {
+                    nombre = Some(valor.to_string());
+                } else {
+                    args.push(arg);
+                }
+            }
+        }
+    }
+
+    let mut normalizados = vec![programa];
+    if sesion {
+        normalizados.push("--session".into());
+    }
+    if let Some(nombre) = nombre {
+        normalizados.push("--name".into());
+        normalizados.push(nombre);
+    }
+    normalizados.extend(args);
+    Ok(normalizados)
 }
 
 fn dir_hernei() -> Result<PathBuf> {
@@ -420,9 +463,41 @@ fn copiar(texto: String) {
 #[cfg(test)]
 mod tests {
     use super::{
-        comando_agente_con_contexto, etiqueta_sesion, titulo_sesion, transcribir, transcribir_a,
+        comando_agente_con_contexto, etiqueta_sesion, normalizar_opciones, titulo_sesion,
+        transcribir, transcribir_a, Cli,
     };
+    use clap::Parser;
     use std::path::Path;
+
+    #[test]
+    fn las_opciones_de_hernei_funcionan_antes_o_despues_del_comando() {
+        for argv in [
+            vec!["hernei", "-n", "Mi sesión", "claude", "-s"],
+            vec!["hernei", "claude", "-n", "Mi sesión", "-s"],
+            vec!["hernei", "claude", "--name=Mi sesión", "--session"],
+        ] {
+            let cli = Cli::try_parse_from(
+                normalizar_opciones(argv.into_iter().map(String::from).collect()).unwrap(),
+            )
+            .unwrap();
+            assert!(cli.session);
+            assert_eq!(cli.name.as_deref(), Some("Mi sesión"));
+            assert_eq!(cli.cmd, ["claude"]);
+        }
+
+        let cli = Cli::try_parse_from(
+            normalizar_opciones(
+                ["hernei", "claude", "--", "-n", "nombre de Claude"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(cli.name, None);
+        assert_eq!(cli.cmd, ["claude", "-n", "nombre de Claude"]);
+    }
 
     #[test]
     fn codex_y_claude_reciben_el_contexto_como_prompt_inicial() {

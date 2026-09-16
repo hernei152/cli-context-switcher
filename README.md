@@ -8,13 +8,15 @@ Graba la sesión interactiva sin romper el TUI y te deja retomar el contexto des
 ```sh
 hernei claude                              # título automático: carpeta actual + comando
 hernei -n "Arreglar login" claude          # título elegido por vos
+hernei claude -n "Arreglar login"          # también funciona después del comando
 hernei codex -s                            # elegís una sesión y Codex recibe el contexto
 hernei claude -s                           # elegís una sesión y Claude recibe el contexto
 ```
 
 El menú muestra el título y la fecha de cada sesión, con las más recientes primero.
-La fecha también queda en el nombre del archivo para evitar colisiones. Poné `-n` o
-`--name` **antes del comando**: los argumentos posteriores se pasan al CLI envuelto.
+La fecha también queda en el nombre del archivo para evitar colisiones. Podés poner
+`-n` o `--name` antes o después del comando. Si necesitás pasarle `-n` al CLI envuelto,
+separá sus argumentos con `--`, por ejemplo `hernei claude -- -n "nombre en Claude"`.
 Las sesiones grabadas con versiones anteriores siguen apareciendo en el menú.
 
 Con `-s`, hernei muestra el menú, limpia los ANSI y escribe un archivo
