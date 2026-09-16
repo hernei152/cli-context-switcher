@@ -17,8 +17,8 @@ set +e; script -qec "$BIN bash -c 'exit 42' -n 'Arreglar login'" /dev/null >/dev
 [ "$(ls "$HOME"/.hernei | wc -l)" = 2 ] || { echo "FAIL: la segunda sesión pisó a la primera"; exit 1; }
 ls "$HOME"/.hernei/session_bash_*__Arreglar-login.txt >/dev/null || { echo "FAIL: falta el título de la sesión"; exit 1; }
 
-# Claude y Codex reciben el prompt inicial como argumento, sin pegarlo en el TUI.
-printf 'historial de prueba\r\n' > "$HOME/.hernei/session_codex_20990101_000000__Prueba.txt"
+# Claude reanuda su sesión nativa; Codex recibe el contexto como prompt inicial.
+printf '\033[2mResume this session with:\033[22m\r\n\033[2mclaude --resume "Prueba nativa"\033[22m\r\n' > "$HOME/.hernei/session_claude_20990101_000000__Prueba.txt"
 mkdir -p "$HOME/bin"
 cat > "$HOME/bin/claude" <<'EOF'
 #!/bin/sh
@@ -30,9 +30,9 @@ printf '%s\n' "$@" > "$HOME/args_codex.txt"
 EOF
 chmod +x "$HOME/bin/claude" "$HOME/bin/codex"
 printf '\r' | PATH="$HOME/bin:$PATH" script -qec "$BIN claude -s" /dev/null > "$HOME/salida_claude.txt"
-grep -q 'Leé el historial de nuestra sesión anterior' "$HOME/args_claude.txt" || { echo "FAIL: Claude no recibió el prompt"; exit 1; }
+grep -qx -- '--resume' "$HOME/args_claude.txt" || { echo "FAIL: Claude no recibió --resume"; exit 1; }
+grep -qx 'Prueba nativa' "$HOME/args_claude.txt" || { echo "FAIL: Claude no recibió el nombre nativo"; exit 1; }
 if grep -q 'copiá y pegá' "$HOME/salida_claude.txt"; then echo "FAIL: Claude pide copiar y pegar"; exit 1; fi
-grep -l 'historial de prueba' "$HOME"/.hernei/contexto_*.txt >/dev/null || { echo "FAIL: falta el contexto limpio"; exit 1; }
 
 printf 'historial para Codex\r\n' > "$HOME/.hernei/session_codex_20990101_000001__Prueba-codex.txt"
 printf '\r' | PATH="$HOME/bin:$PATH" script -qec "$BIN codex -s" /dev/null > "$HOME/salida_retomar.txt"

@@ -19,13 +19,16 @@ La fecha también queda en el nombre del archivo para evitar colisiones. Podés 
 separá sus argumentos con `--`, por ejemplo `hernei claude -- -n "nombre en Claude"`.
 Las sesiones grabadas con versiones anteriores siguen apareciendo en el menú.
 
-Con `-s`, hernei muestra el menú, limpia los ANSI y escribe un archivo
-`~/.hernei/contexto_*.txt` propio de la sesión elegida. Para `codex`, pasa un prompt
-inicial al CLI de `codex`, `claude` o `claude-ds`: el agente recibe la instrucción de
-leer el archivo al abrir y esperar tu próximo pedido, sin copiar ni pegar nada.
-Para otros comandos, hernei muestra el
-prompt para pegarlo manualmente y también intenta copiarlo al portapapeles. La
-nueva sesión se graba como siempre.
+Con `-s`, hernei muestra el menú. Para `claude` y `claude-ds`, usa la sesión nativa
+que Claude guarda y el comando `claude --resume`, así se conserva la conversación
+completa aunque el TUI limpie la pantalla al salir. Los nombres elegidos con `-n`
+también se asignan a la sesión nativa de Claude.
+
+Para `codex` y otros comandos, hernei limpia los ANSI y escribe un archivo
+`~/.hernei/contexto_*.txt` propio de la sesión elegida. Codex recibe automáticamente
+la instrucción de leerlo; con comandos no reconocidos, hernei muestra el prompt para
+pegarlo manualmente y también intenta copiarlo al portapapeles. La nueva sesión se
+graba como siempre.
 
 ## Cómo funciona
 
@@ -60,4 +63,4 @@ vt100:               Welcome to Claude Code v2.1.266
 - El replay usa el tamaño de la terminal actual, no el de la sesión grabada (no lo
   guardamos). Si la grabaste con otro ancho, el layout sale corrido.
 - Una app que usa la pantalla alternativa (`vim`, `htop`) no deja scrollback: del log
-  sale sólo el último frame.
+  sale sólo el último frame. Claude se recupera mediante su sesión nativa.
