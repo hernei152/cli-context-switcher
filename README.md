@@ -8,8 +8,8 @@ Graba la sesión interactiva sin romper el TUI y te deja retomar el contexto des
 ```sh
 hernei claude                              # título automático: carpeta actual + comando
 hernei -n "Arreglar login" claude          # título elegido por vos
-hernei codex -s                            # elegís una sesión y Codex lee el contexto al abrir
-hernei claude -s                           # elegís una sesión y recibís el prompt para pegar
+hernei codex -s                            # elegís una sesión y Codex recibe el contexto
+hernei claude -s                           # elegís una sesión y Claude recibe el contexto
 ```
 
 El menú muestra el título y la fecha de cada sesión, con las más recientes primero.
@@ -19,8 +19,9 @@ Las sesiones grabadas con versiones anteriores siguen apareciendo en el menú.
 
 Con `-s`, hernei muestra el menú, limpia los ANSI y escribe un archivo
 `~/.hernei/contexto_*.txt` propio de la sesión elegida. Para `codex`, pasa un prompt
-inicial al CLI: Codex recibe la instrucción de leer el archivo al abrir y esperar tu
-próximo pedido, sin copiar ni pegar nada. Para otros comandos, hernei muestra el
+inicial al CLI de `codex`, `claude` o `claude-ds`: el agente recibe la instrucción de
+leer el archivo al abrir y esperar tu próximo pedido, sin copiar ni pegar nada.
+Para otros comandos, hernei muestra el
 prompt para pegarlo manualmente y también intenta copiarlo al portapapeles. La
 nueva sesión se graba como siempre.
 

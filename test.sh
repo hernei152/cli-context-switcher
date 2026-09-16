@@ -17,18 +17,28 @@ set +e; script -qec "$BIN -n 'Arreglar login' bash -c 'exit 42'" /dev/null >/dev
 [ "$(ls "$HOME"/.hernei | wc -l)" = 2 ] || { echo "FAIL: la segunda sesión pisó a la primera"; exit 1; }
 ls "$HOME"/.hernei/session_bash_*__Arreglar-login.txt >/dev/null || { echo "FAIL: falta el título de la sesión"; exit 1; }
 
-# Codex recibe el prompt inicial como argumento, sin pegarlo en el TUI.
+# Claude y Codex reciben el prompt inicial como argumento, sin pegarlo en el TUI.
 printf 'historial de prueba\r\n' > "$HOME/.hernei/session_codex_20990101_000000__Prueba.txt"
 mkdir -p "$HOME/bin"
+cat > "$HOME/bin/claude" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" > "$HOME/args_claude.txt"
+EOF
 cat > "$HOME/bin/codex" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$@" > "$HOME/args_codex.txt"
 EOF
-chmod +x "$HOME/bin/codex"
+chmod +x "$HOME/bin/claude" "$HOME/bin/codex"
+printf '\r' | PATH="$HOME/bin:$PATH" script -qec "$BIN claude -s" /dev/null > "$HOME/salida_claude.txt"
+grep -q 'Leé el historial de nuestra sesión anterior' "$HOME/args_claude.txt" || { echo "FAIL: Claude no recibió el prompt"; exit 1; }
+if grep -q 'copiá y pegá' "$HOME/salida_claude.txt"; then echo "FAIL: Claude pide copiar y pegar"; exit 1; fi
+grep -l 'historial de prueba' "$HOME"/.hernei/contexto_*.txt >/dev/null || { echo "FAIL: falta el contexto limpio"; exit 1; }
+
+printf 'historial para Codex\r\n' > "$HOME/.hernei/session_codex_20990101_000001__Prueba-codex.txt"
 printf '\r' | PATH="$HOME/bin:$PATH" script -qec "$BIN codex -s" /dev/null > "$HOME/salida_retomar.txt"
 grep -q 'Leé el historial de nuestra sesión anterior' "$HOME/args_codex.txt" || { echo "FAIL: Codex no recibió el prompt"; exit 1; }
-CTX=$(ls "$HOME"/.hernei/contexto_*.txt)
-grep -q 'historial de prueba' "$CTX" || { echo "FAIL: falta el contexto limpio"; exit 1; }
+if grep -q 'copiá y pegá' "$HOME/salida_retomar.txt"; then echo "FAIL: Codex pide copiar y pegar"; exit 1; fi
+grep -l 'historial para Codex' "$HOME"/.hernei/contexto_*.txt >/dev/null || { echo "FAIL: falta el contexto limpio"; exit 1; }
 
 echo "OK (PTY, nombres e inyección de contexto)"
 rm -rf "$HOME"
