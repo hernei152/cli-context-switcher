@@ -3,6 +3,39 @@
 Wrapper de cero overhead para CLIs de LLM (`claude`, `codex`, lo que sea).
 Graba la sesión interactiva sin romper el TUI y te deja retomar el contexto después.
 
+## Instalación
+
+Necesitás [Git](https://git-scm.com/) y una instalación de Rust que incluya `cargo`.
+
+```sh
+git clone https://github.com/hernei152/cli-context-switcher.git
+cd cli-context-switcher
+cargo build --release
+mkdir -p "$HOME/.local/bin"
+install -m 755 target/release/hernei "$HOME/.local/bin/hernei"
+```
+
+Comprobá que quedó instalado:
+
+```sh
+hernei --version
+```
+
+Si la terminal no encuentra el comando, agregá `~/.local/bin` al `PATH` de tu shell:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Para actualizar una instalación existente:
+
+```sh
+cd cli-context-switcher
+git pull
+cargo build --release
+install -m 755 target/release/hernei "$HOME/.local/bin/hernei"
+```
+
 ## Uso
 
 ```sh
@@ -36,7 +69,7 @@ El comando corre dentro de un PTY (`portable-pty`), así que ve un TTY real y co
 colores, TUI y tamaño de ventana. Dos hilos bombean el I/O: `stdin → pty` y
 `pty → stdout + log`. El código de salida del comando envuelto se propaga.
 
-## Build
+## Desarrollo
 
 ```sh
 cargo build --release
