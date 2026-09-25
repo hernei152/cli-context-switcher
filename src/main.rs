@@ -10,8 +10,7 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 use arboard::Clipboard;
 use clap::Parser;
-use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
-use crossterm::execute;
+use crossterm::terminal;
 use inquire::Select;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
@@ -121,27 +120,18 @@ impl Drop for ModoRaw {
     }
 }
 
-/// Corre la sesión en la pantalla alternativa (como vim/less): al cerrar, la
-/// terminal vuelve a la pantalla principal y no queda rastro de la sesión.
-/// La grabación en ~/.hernei/ sigue intacta.
-struct PantallaAlt;
-
-impl PantallaAlt {
-    fn activar() -> Result<Self> {
-        execute!(std::io::stdout(), EnterAlternateScreen)?;
-        Ok(PantallaAlt)
-    }
-}
-
-impl Drop for PantallaAlt {
-    fn drop(&mut self) {
-        let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
-    }
-}
-
 fn tam_actual() -> PtySize {
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
     PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }
+}
+
+/// Empezamos cada sesión con el historial de la terminal vacío, pero seguimos
+/// usando la pantalla principal: así el scroll pertenece sólo a esta sesión.
+fn limpiar_terminal() -> Result<()> {
+    let mut salida = std::io::stdout();
+    salida.write_all(b"\x1b[3J\x1b[2J\x1b[H")?;
+    salida.flush()?;
+    Ok(())
 }
 
 /// Corre `cmd` dentro de un PTY, escupiendo todo a stdout y a un log en ~/.hernei/.
@@ -183,7 +173,7 @@ fn grabar(cmd: &[String], nombre_elegido: Option<&str>) -> Result<i32> {
     let mut escritor = par.master.take_writer()?;
 
     let _raw = ModoRaw::activar()?;
-    let _alt = PantallaAlt::activar()?;
+    limpiar_terminal()?;
     let vivo = Arc::new(AtomicBool::new(true));
 
     // ponytail: sondeo del tamaño cada 200ms en vez de manejar SIGWINCH.
@@ -234,7 +224,6 @@ fn grabar(cmd: &[String], nombre_elegido: Option<&str>) -> Result<i32> {
     let estado = hijo.wait()?;
     let _ = bombeo.join();
     vivo.store(false, Ordering::Relaxed);
-    drop(_alt); // salir de la pantalla alternativa antes de imprimir nada
     drop(_raw);
 
     eprintln!("\r\n[hernei] sesión guardada en {}", log_path.display());
@@ -305,7 +294,6 @@ fn retomar(cmd: &[String], nombre_elegido: Option<&str>) -> Result<i32> {
         println!("[hernei] contexto limpio en {}", destino.display());
         println!("[hernei] inyección automática aún no configurada para {}", cmd[0]);
         println!("[hernei] copiá y pegá este prompt en el agente:\n  {prompt}\n");
-        // La pantalla alternativa de grabar() taparía estas instrucciones.
         println!("[hernei] presioná Enter para arrancar {}", cmd.join(" "));
         let mut s = String::new();
         let _ = std::io::stdin().read_line(&mut s); // EOF también arranca

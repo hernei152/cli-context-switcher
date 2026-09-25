@@ -5,11 +5,19 @@ set -euo pipefail
 BIN="$(dirname "$0")/target/release/hernei"
 export HOME="$(mktemp -d)"
 
-script -qec "$BIN bash -c 'printf \"\\033[31mhola-rojo\\033[0m\\n\"'" /dev/null >/dev/null
+script -qec "$BIN bash -c 'printf \"\\033[31mhola-rojo\\033[0m\\n\"'" /dev/null > "$HOME/salida_pty.txt"
 
 LOG=$(ls "$HOME"/.hernei/session_bash_*.txt)
 grep -q $'\033\[31mhola-rojo' "$LOG"        || { echo "FAIL: el log no conservó los ANSI"; exit 1; }
 grep -q "hola-rojo" <(cat "$LOG")           || { echo "FAIL: falta el texto"; exit 1; }
+grep -q $'\033\[3J\033\[2J\033\[H' "$HOME/salida_pty.txt" || {
+    echo "FAIL: hernei no limpió el historial anterior de la terminal"
+    exit 1
+}
+if grep -q $'\033\[?1049[hl]' "$HOME/salida_pty.txt"; then
+    echo "FAIL: hernei activó la pantalla alternativa y rompió el scrollback"
+    exit 1
+fi
 
 # el código de salida del comando envuelto tiene que propagarse
 set +e; script -qec "$BIN bash -c 'exit 42' -n 'Arreglar login'" /dev/null >/dev/null; CODE=$?; set -e

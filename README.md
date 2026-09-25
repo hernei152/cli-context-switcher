@@ -67,7 +67,10 @@ graba como siempre.
 
 El comando corre dentro de un PTY (`portable-pty`), así que ve un TTY real y conserva
 colores, TUI y tamaño de ventana. Dos hilos bombean el I/O: `stdin → pty` y
-`pty → stdout + log`. El código de salida del comando envuelto se propaga.
+`pty → stdout + log`. Hernei usa la pantalla principal de la terminal para que
+el historial de la sesión actual siga disponible con la rueda o la barra de
+desplazamiento, y limpia el historial anterior al arrancar. El código de salida
+del comando envuelto se propaga.
 
 ## Desarrollo
 
