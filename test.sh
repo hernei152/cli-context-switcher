@@ -39,6 +39,7 @@ printf '\r' | PATH="$HOME/bin:$PATH" script -qec "$BIN codex -s" /dev/null > "$H
 grep -q 'Leé el historial de nuestra sesión anterior' "$HOME/args_codex.txt" || { echo "FAIL: Codex no recibió el prompt"; exit 1; }
 if grep -q 'copiá y pegá' "$HOME/salida_retomar.txt"; then echo "FAIL: Codex pide copiar y pegar"; exit 1; fi
 grep -l 'historial para Codex' "$HOME"/.hernei/contexto_*.txt >/dev/null || { echo "FAIL: falta el contexto limpio"; exit 1; }
+[ "$(find "$HOME/.hernei" -maxdepth 1 -name 'session_codex_*__Prueba-codex.txt' | wc -l)" = 2 ] || { echo "FAIL: la sesión retomada cambió de nombre"; exit 1; }
 
 echo "OK (PTY, nombres e inyección de contexto)"
 rm -rf "$HOME"
